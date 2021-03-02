@@ -1,10 +1,12 @@
-from typing import List
+from typing import List, Optional
+import copy
 
 import pandas as pd
 import numpy as np
-from plotly.offline import init_notebook_mode, iplot
+import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 import seaborn as sns
+from plotly.offline import init_notebook_mode, iplot
 import plotly.graph_objs as go
 from sklearn.preprocessing import StandardScaler
 
@@ -23,9 +25,9 @@ class HeatmapWidget(BaseWidget):
 
     Attributes:
         input_data: The input data.
-        colnames: Names of numeric columns.
+        colnames ([str]): Names of numeric columns.
         std_data: The transposed, standardized data after scaling.
-        missing: If True, the heatmap shows missing values as indicators
+        missing (bool): If True, the heatmap shows missing values as indicators
             instead of standardized values.
         missing_data: The missing value indicator data.
     """
@@ -33,21 +35,21 @@ class HeatmapWidget(BaseWidget):
     def __init__(
         self,
         input_data=None,
-        colnames=None,
+        colnames: Optional[List] = None,
         std_data=None,
-        missing=False,
-        missing_data=None,
+        missing: bool = False,
+        missing_data: Optional[bool] = None,
         **kwargs,
     ):
         """Data heatmap.
 
         Args:
             input_data: The input data.
-            colnames: Names of numeric columns.
+            colnames ([str]): Names of numeric columns.
             std_data: The transposed, standardized data after scaling.
             missing (bool): If True, the heatmap shows missing values as indicators
                 instead of standardized values.
-            missing_data: The missing value indicator data.
+            missing_data (bool): The missing value indicator data.
         """
         super(HeatmapWidget, self).__init__(**kwargs)
         self.input_data = input_data
@@ -64,13 +66,13 @@ class HeatmapWidget(BaseWidget):
         mode = "missing" if self.missing else "standardized"
         return f"Heatmap Widget showing {mode} values."
 
-    def show(self, viz_backend=None, **kwargs):
+    def show(self, viz_backend: Optional[str] = None, **kwargs):
         """The default display for this output.
 
         Shows the data heatmap plot.
 
         Args:
-            viz_backend: The visualization backend.
+            viz_backend (str): The visualization backend.
             **kwargs: Keyword arguments.
 
         Raises:
@@ -90,7 +92,11 @@ class HeatmapWidget(BaseWidget):
 
 
 def data_heatmap(
-    data, missing=False, compute_backend=None, viz_backend=None, **kwargs
+    data,
+    missing: bool = False,
+    compute_backend: Optional[str] = None,
+    viz_backend: Optional[str] = None,
+    **kwargs,
 ) -> HeatmapWidget:
     """Visualizes data patterns in the entire dataset by visualizing as a heatmap.
 
@@ -105,8 +111,8 @@ def data_heatmap(
     Args:
         data: A pandas data frame
         missing (bool): If True, show only missing values
-        compute_backend: The compute backend.
-        viz_backend: The visualization backend.
+        compute_backend (str): The compute backend.
+        viz_backend (str): The visualization backend.
         **kwargs: Keyword arguments
 
     Returns:
@@ -219,15 +225,22 @@ def _seaborn_viz_data_heatmap(
 
     Args:
         data: The dataframe
-        colnames: The column names, used for tick labels
-        missing: If True, plots missing values instead
-        kwargs: Keyword arguments passed to seaborn.heatmap
+        colnames (List[str]): The column names, used for tick labels
+        missing (bool): If True, plots missing values instead
+        **kwargs: Keyword arguments passed to seaborn.heatmap
 
     Returns:
         The seaborn figure
     """
+    cmap = (
+        copy.copy(plt.get_cmap("viridis"))
+        if not missing
+        else copy.copy(plt.get_cmap("Greys"))
+    )
+    cmap.set_bad(color="white")
+
     plot_options = {
-        "cmap": "viridis" if not missing else "Greys",
+        "cmap": cmap,
         "robust": True,
         "center": 0 if not missing else 0.5,
         "xticklabels": False,
