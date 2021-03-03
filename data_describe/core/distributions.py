@@ -1,9 +1,12 @@
 from typing import Dict, Any, Optional
 
+from pandas.api.types import is_numeric_dtype
+import matplotlib
 from matplotlib.figure import Figure
 from matplotlib.gridspec import GridSpec
 import seaborn as sns
 import numpy as np
+from scipy.stats import binned_statistic
 
 from data_describe.config._config import get_option
 from data_describe.metrics.univariate import spikey, skewed
@@ -34,6 +37,8 @@ class DistributionWidget(BaseWidget):
         skew_value=None,
         spike_factor=None,
         skew_factor=None,
+        contrast=None,
+        target=None,
         viz_backend=None,
     ):
         """Distribution Plots.
@@ -45,6 +50,8 @@ class DistributionWidget(BaseWidget):
             skew_value: Measure of the skewness metric.
             spike_factor: The threshold factor used to diagnose "spikey"ness.
             skew_factor: The threshold factor used to diagnose skew.
+            contrast: The name of the categorical column to use for multiple contrasts.
+            target: The name of the target column that will be overlaid as a line plot.
             viz_backend: The visualization backend.
         """
         self.input_data = input_data
@@ -52,6 +59,7 @@ class DistributionWidget(BaseWidget):
         self.skew_value = skew_value
         self.spike_factor = spike_factor
         self.skew_factor = skew_factor
+        self.contrast = contrast
         self.viz_backend = viz_backend
 
     def show(self, viz_backend=None, **kwargs):
@@ -63,29 +71,48 @@ class DistributionWidget(BaseWidget):
             viz_backend (str, optional): The visualization backend.
             **kwargs: Keyword arguments.
         """
-        summary_string = """Distribution Summary:
-        Skew detected in {} columns.
-        Spikey histograms detected in {} columns.
+        viz_backend = viz_backend or self.viz_backend
 
-        Use the method plot_distribution("column_name") to view plots for each feature.
+        return self.plot_all(viz_backend=viz_backend, **kwargs)
 
-        Example:
-            dist = DistributionWidget(data)
-            dist.plot_distribution("column1")
-        """.format(
-            np.sum(self.skew_value > self.skew_factor),
-            np.sum(self.spike_value > self.spike_factor),
-        )
-        print(summary_string)
-
-    def plot_distribution(
+    def plot_all(
         self,
-        x: Optional[str] = None,
         contrast: Optional[str] = None,
+        target: Optional[str] = None,
         viz_backend: Optional[str] = None,
         **kwargs,
     ):
-        """Generate distribution plot(s).
+        """Shows all distribution plots in a faceted grid.
+
+        Numeric features will be visualized using a histogram/violin plot, and any other
+        types will be visualized using a categorical bar plot.
+
+        Args:
+            x (str, optional): The feature name to plot. If None, will plot all features.
+            contrast (str, optional): The feature name to compare histograms by contrast.
+            viz_backend (optional): The visualization backend.
+            **kwargs: Additional keyword arguments for the visualization backend.
+
+        Returns:
+            Histogram plot(s).
+        """
+        backend = viz_backend or self.viz_backend
+        contrast = contrast or self.contrast
+        target = target or self.target
+
+        return _get_viz_backend(backend).viz_all_distribution(
+            data=self.input_data, contrast=contrast, target=target, **kwargs
+        )
+
+    def plot(
+        self,
+        x: Optional[str] = None,
+        contrast: Optional[str] = None,
+        target: Optional[str] = None,
+        viz_backend: Optional[str] = None,
+        **kwargs,
+    ):
+        """Generate distribution plots.
 
         Numeric features will be visualized using a histogram/violin plot, and any other
         types will be visualized using a categorical bar plot.
@@ -104,14 +131,22 @@ class DistributionWidget(BaseWidget):
             Histogram plot(s).
         """
         backend = viz_backend or self.viz_backend
+        contrast = contrast or self.contrast
+        target = target or self.target
 
         return _get_viz_backend(backend).viz_distribution(
-            data=self.input_data, x=x, contrast=contrast, **kwargs
+            data=self.input_data, x=x, contrast=contrast, target=target, **kwargs
         )
 
 
 def distribution(
-    data, diagnostic=True, compute_backend=None, viz_backend=None, **kwargs
+    data,
+    diagnostic=True,
+    contrast=None,
+    target=None,
+    compute_backend=None,
+    viz_backend=None,
+    **kwargs,
 ) -> DistributionWidget:
     """Distribution Plots.
 
@@ -138,6 +173,8 @@ def distribution(
     widget = _get_compute_backend(compute_backend, data).compute_distribution(
         data, diagnostic=diagnostic, **kwargs
     )
+    widget.contrast = contrast
+    widget.target = target
     return widget
 
 
@@ -170,7 +207,43 @@ def _pandas_compute_distribution(
     )
 
 
-def _seaborn_viz_distribution(data, x: str, contrast: Optional[str] = None, **kwargs):
+def _seaborn_viz_distribution(
+    data,
+    x: str,
+    contrast: Optional[str] = None,
+    target: Optional[str] = None,
+    ax: Optional[matplotlib.axes.Axes] = None,
+    **kwargs,
+):
+    """Plots the distribution.
+
+    Args:
+        data: The data
+        x (str): The column to visualize.
+        contrast (str, optional): The column to use as a contrast.
+        ax (matplotlib.axes.Axes): Pre-existing axes for the plot.
+        **kwargs: Keyword arguments passed to underlying plot functions.
+
+    Returns:
+        matplotlib.figure.Figure
+    """
+    if x in data.select_dtypes("number").columns:
+        return _seaborn_viz_numeric(
+            data, x, contrast=contrast, target=target, ax=ax, **kwargs
+        )
+    else:
+        return _seaborn_viz_categorical(
+            data, x, contrast=contrast, target=target, ax=ax, **kwargs
+        )
+
+
+def _seaborn_viz_all_distribution(
+    data,
+    contrast: Optional[str] = None,
+    target: Optional[str] = None,
+    mode: str = "combo",
+    **kwargs,
+):
     """Plots the distribution.
 
     Args:
@@ -182,19 +255,49 @@ def _seaborn_viz_distribution(data, x: str, contrast: Optional[str] = None, **kw
     Returns:
         matplotlib.figure.Figure
     """
-    if x in data.select_dtypes("number").columns:
-        return _seaborn_viz_numeric(data, x, contrast, **kwargs)
-    else:
-        return _seaborn_viz_categorical(data, x, contrast, **kwargs)
+    hist_kwargs = {**{"legend": False}, **kwargs.get("hist_kwargs", {})}
+    # violin_kwargs = {**{'legend': False}, **kwargs.get("hist_kwargs", {})}
+    bar_kwargs = {**{"legend": False}, **kwargs.get("bar_kwargs", {})}
+
+    fig = Figure(
+        figsize=(
+            get_option("display.matplotlib.fig_width"),
+            max(
+                get_option("display.matplotlib.fig_width")
+                / 4
+                * int(np.ceil(data.shape[1] / 4)),
+                get_option("display.matplotlib.fig_height"),
+            ),
+        )
+    )
+    for i, col in enumerate(data.columns):
+        ax = fig.add_subplot(
+            int(np.ceil(data.shape[1] / 4)) + 1,
+            4,
+            i + 1,
+            label=col,
+        )
+        if col in data.select_dtypes(["number", "datetime", "datetimetz"]).columns:
+            _seaborn_viz_histogram(
+                data, col, contrast=contrast, target=target, ax=ax, **hist_kwargs
+            )
+        else:
+            _seaborn_viz_bar(
+                data, col, contrast=contrast, target=target, ax=ax, **bar_kwargs
+            )
+    fig.tight_layout()
+    return fig
 
 
 def _seaborn_viz_numeric(
     data,
     x: str,
     contrast: Optional[str] = None,
+    target: Optional[str] = None,
     mode: str = "combo",
     hist_kwargs: Optional[dict] = None,
     violin_kwargs: Optional[dict] = None,
+    ax: Optional[matplotlib.axes.Axes] = None,
     **kwargs,
 ):
     """Plots a histogram/violin plot.
@@ -230,21 +333,25 @@ def _seaborn_viz_numeric(
 
         ax1.spines["right"].set_visible(False)
         ax1.spines["top"].set_visible(False)
-        _seaborn_viz_histogram(data, x, contrast, ax=ax1, **hist_kwargs)
-        _seaborn_viz_violin(data, x, contrast, ax=ax2, **violin_kwargs)
+        _seaborn_viz_histogram(
+            data, x, contrast=contrast, target=target, ax=ax1, **hist_kwargs
+        )
+        _seaborn_viz_violin(
+            data, x, contrast=contrast, target=target, ax=ax2, **violin_kwargs
+        )
         ax1.set_title(x)
         return fig
     elif mode == "hist":
         ax = fig.add_subplot()
         _seaborn_viz_histogram(
-            data, x, contrast=contrast, ax=ax, **hist_kwargs, **kwargs
+            data, x, contrast=contrast, target=target, ax=ax, **hist_kwargs, **kwargs
         )
         ax.set_title(x)
         return fig
     elif mode == "violin":
         ax = fig.add_subplot()
         _seaborn_viz_violin(
-            data, x, contrast=contrast, ax=ax, **violin_kwargs, **kwargs
+            data, x, contrast=contrast, target=target, ax=ax, **violin_kwargs, **kwargs
         )
         ax.set_title(x)
         return fig
@@ -252,7 +359,9 @@ def _seaborn_viz_numeric(
         raise ValueError("Unknown value for 'mode' plot type")
 
 
-def _seaborn_viz_categorical(data, x: str, contrast: Optional[str] = None, **kwargs):
+def _seaborn_viz_categorical(
+    data, x: str, contrast: Optional[str] = None, target: Optional[str] = None, **kwargs
+):
     """Plots a bar count plot for a categorical feature.
 
     Args:
@@ -272,18 +381,28 @@ def _seaborn_viz_categorical(data, x: str, contrast: Optional[str] = None, **kwa
         )
     )
     ax = fig.add_subplot()
-    _seaborn_viz_bar(data, x, contrast, ax=ax, **bar_kwargs)
+    _seaborn_viz_bar(data, x, contrast=contrast, target=target, ax=ax, **bar_kwargs)
     ax.set_title(x)
     return fig
 
 
-def _seaborn_viz_histogram(data, x: str, contrast: Optional[str] = None, **kwargs):
+def _seaborn_viz_histogram(
+    data,
+    x: str,
+    contrast: Optional[str] = None,
+    target: Optional[str] = None,
+    bins=10,
+    **kwargs,
+):
     """Plot a single histogram.
 
     Args:
         data (DataFrame): The data
         x (str): The name of the column to plot.
         contrast (str, optional): The name of the categorical column to use for multiple contrasts.
+        target (str, optional): The name of the target column that will be overlaid as a line plot.
+            If target is numeric: Uses the average target value for each bin
+            If the target is binary (category): Converts to a pandas category code (`pandas.Series.cat.codes`)
         **kwargs: Keyword arguments passed to seaborn.distplot
 
     Raises:
@@ -292,27 +411,71 @@ def _seaborn_viz_histogram(data, x: str, contrast: Optional[str] = None, **kwarg
     Returns:
         Seaborn Axis Object
     """
-    if x not in data.select_dtypes("number").columns:
+    if x not in data.select_dtypes(["number", "datetime", "datetimetz"]).columns:
         raise ValueError("x must be numeric column")
 
-    default_hist_kwargs: Dict[str, Any] = {}
+    default_hist_kwargs: Dict[str, Any] = {"bins": bins}
     hist_kwargs = {**default_hist_kwargs, **(kwargs or {})}
-    if contrast:
+    if contrast and contrast != x:
         data[contrast] = data[contrast].astype("category")
         ax = sns.histplot(x=x, hue=contrast, data=data, **hist_kwargs)
     else:
         ax = sns.histplot(data[x], **hist_kwargs)
-        ax.set_title(f"Histogram of {x}")
+
+    if target and target != x:
+        if is_numeric_dtype(data[x]):
+            ax2 = ax.twinx()
+            if is_numeric_dtype(data[target]):
+                estimator = sns._statistics.Histogram()
+                bin_edges = estimator.define_bin_edges(
+                    data[x]  # , bins=hist_kwargs.get("bins")
+                )
+                statistic, _, _ = binned_statistic(
+                    data[x], data[target], bins=bin_edges
+                )
+                ax = sns.lineplot(
+                    x=bin_edges[:-1] + np.diff(bin_edges) / 2,
+                    y=statistic,
+                    marker="o",
+                    color="black",
+                    ax=ax2,
+                )
+                ax2.set_ylabel(target, rotation=270, labelpad=10)
+            elif data[target].nunique() <= 2:
+                target_ = data[target].astype("category").cat.codes
+                estimator = sns._statistics.Histogram()
+                bin_edges = estimator.define_bin_edges(
+                    data[x]  # , bins=hist_kwargs.get("bins")
+                )
+                statistic, _, _ = binned_statistic(data[x], target_, bins=bin_edges)
+                ax = sns.lineplot(
+                    x=bin_edges[:-1] + np.diff(bin_edges) / 2,
+                    y=statistic,
+                    marker="o",
+                    color="black",
+                    ax=ax2,
+                )
+                ax2.set_ylabel(target, rotation=270, labelpad=10)
+            else:
+                raise NotImplementedError(
+                    "`target` not implemented for more categories with more than 2 levels."
+                )
+
+    ax.set_title(x)
+    ax.set_xlabel("")
     return ax
 
 
-def _seaborn_viz_violin(data, x: str, contrast: Optional[str] = None, **kwargs):
+def _seaborn_viz_violin(
+    data, x: str, contrast: Optional[str] = None, target: Optional[str] = None, **kwargs
+):
     """Plot a single violin plot.
 
     Args:
         data (DataFrame): The data
         x (str): The name of the column to plot.
         contrast (str, optional): The name of the categorical column to use for multiple contrasts.
+        target (str, optional): Not implemented.
         **kwargs: Keyword arguments passed to seaborn.violinplot
 
     Raises:
@@ -326,30 +489,78 @@ def _seaborn_viz_violin(data, x: str, contrast: Optional[str] = None, **kwargs):
 
     default_violin_kwargs = {"cut": 0}
     violin_kwargs = {**default_violin_kwargs, **(kwargs or {})}
-    if contrast:
+    if contrast and contrast != x:
         data[contrast] = data[contrast].astype("category")
         ax = sns.violinplot(x=x, y=contrast, data=data, **violin_kwargs)
     else:
         ax = sns.violinplot(x=x, data=data, **violin_kwargs)
+
+    ax.set_title(x)
+    ax.set_ylabel("")
+    ax.set_xlabel("")
+
     return ax
 
 
-def _seaborn_viz_bar(data, x: str, contrast: Optional[str] = None, **kwargs):
+def _seaborn_viz_bar(
+    data, x: str, contrast: Optional[str] = None, target: Optional[str] = None, **kwargs
+):
     """Plot a bar chart (count plot) for categorical features.
 
     Args:
         data (DataFrame): The data
         x (str): The name of the column to plot.
         contrast (str, optional): The name of the column to use for multiple histograms.
+        target (str, optional): The name of the target column that will be overlaid as a line plot.
+            If target is numeric: Uses the average target value for each bin
+            If the target is binary (category): Converts to a pandas category code (`pandas.Series.cat.codes`)
         **kwargs: Keyword arguments passed to seaborn.countplot
 
     Returns:
         Seaborn Axis Object
     """
-    default_bar_kwargs = {"orient": "h"}
+    default_bar_kwargs = {
+        "orient": "h",
+        "alpha": 0.75,
+        "edgecolor": matplotlib.rcParams["patch.edgecolor"],
+    }
+
     bar_kwargs = {**default_bar_kwargs, **(kwargs or {})}
-    if contrast:
+
+    legend = bar_kwargs.pop("legend", True)
+
+    if contrast and contrast != x:
         ax = sns.countplot(x=x, hue=contrast, data=data, **bar_kwargs)
     else:
         ax = sns.countplot(x=x, data=data, **bar_kwargs)
+
+    if not legend:
+        ax.legend().remove()
+
+    if target and target != x:
+        ax2 = ax.twinx()
+        if is_numeric_dtype(data[target]):
+            ax = sns.lineplot(
+                x=data[x],
+                y=data[target],
+                marker="o",
+                color="black",
+                err_style="bars",
+                ax=ax2,
+            )
+        elif data[target].nunique() <= 2:
+            target_ = data[target].astype("category").cat.codes
+            ax = sns.lineplot(
+                x=data[x],
+                y=target_,
+                marker="o",
+                color="black",
+                err_style="bars",
+                ax=ax2,
+            )
+
+    ax.set_title(x)
+    ax.set_ylabel("")
+    ax.set_xlabel("")
+
     return ax

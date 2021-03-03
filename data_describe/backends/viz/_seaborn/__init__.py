@@ -18,6 +18,7 @@ from data_describe.core.clustering import (  # noqa: F401
 )
 from data_describe.core.distributions import (  # noqa: F401
     _seaborn_viz_distribution as viz_distribution,
+    _seaborn_viz_all_distribution as viz_all_distribution,
 )
 from data_describe.core.correlation import (  # noqa: F401
     _seaborn_viz_correlation_matrix as viz_correlation_matrix,
