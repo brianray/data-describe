@@ -706,7 +706,7 @@ def _pyldavis_viz_visualize_topic_summary(
             module="pyLDAvis",
             message="Sorting because non-concatenation axis is not aligned.",
         )
-        vis = _compat["pyLDAvis"].gensim.prepare(model, corpus, dictionary)  # type: ignore
+        vis = _compat["pyLDAvis.gensim"].prepare(model, corpus, dictionary)  # type: ignore
         return vis
 
 
