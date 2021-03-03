@@ -270,7 +270,7 @@ def _modin_compute_data_summary(data):
             "Info": [
                 data.shape[0],
                 data.shape[1],
-                _sizeof_fmt(data.memory_usage().sum(), ""),
+                _sizeof_fmt(data.memory_usage().sum()),
             ]
         },
         index=["Rows", "Columns", "Size in Memory"],
@@ -280,7 +280,7 @@ def _modin_compute_data_summary(data):
     columns = data.columns
 
     dtypes = data.dtypes.to_numpy()
-    s_mean = data.mean(numeric_only=True).reindex().to_numpy()
+    s_mean = data.mean(numeric_only=True).reindex(columns).to_numpy()
     s_sd = data.std(numeric_only=True).reindex(columns).to_numpy()
     s_med = data.median(numeric_only=True).reindex(columns).to_numpy()
     s_min = data.min(numeric_only=True).reindex(columns).to_numpy()
@@ -288,13 +288,7 @@ def _modin_compute_data_summary(data):
     s_zero = data[data == 0].fillna(0).sum().astype(int).to_numpy()
     s_null = data.isnull().sum().astype(int).to_numpy()
     s_unique = data.nunique().to_numpy()
-    s_freq = (
-        data.apply(lambda x: mode1(x.astype("str")))
-        .iloc[
-            0,
-        ]
-        .to_numpy()
-    )
+    s_freq = data.apply(lambda x: mode1(x.astype("str"))).to_numpy()
 
     summary_data = pd.DataFrame(
         np.vstack(
