@@ -12,3 +12,6 @@ from data_describe.core.clustering import (  # noqa: F401
 from data_describe.core.correlation import (  # noqa: F401
     _plotly_viz_correlation_matrix as viz_correlation_matrix,
 )
+from data_describe.anomaly.detection import (  # noqa: F401
+    _plotly_viz_anomaly as viz_plot_anomaly,
+)

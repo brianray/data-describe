@@ -37,6 +37,7 @@ EXTRAS = {
     "cluster": ["hdbscan>=0.8.17"],
     "time": ["statsmodels>=0.10"],
     "scatter": ["pyscagnostics>=0.1.0a4"],
+    "anomaly": ["pmdarima>=1.7"],
 }
 EXTRAS["all"] = list(set([x for req in EXTRAS.values() for x in req]))
 

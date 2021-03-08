@@ -31,3 +31,6 @@ from data_describe.core.distributions import (  # noqa: F401
 from data_describe.core.correlation import (  # noqa: F401
     _pandas_compute_correlation_matrix as compute_correlation_matrix,
 )
+from data_describe.anomaly.detection import (  # noqa: F401
+    _pandas_compute_anomaly as compute_anomaly,
+)

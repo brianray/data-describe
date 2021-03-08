@@ -268,3 +268,22 @@ def compute_backend_pii_text(request):
 def compute_backend_column_infotype(request):
     mod = pytest.importorskip(request.param)
     return mod.Series(["This string contains a domain, gmail.com"])
+
+
+@pytest.fixture
+def auto_arima_args():
+    return {
+        "start_p": 1,
+        "start_q": 1,
+        "max_p": 1,
+        "max_q": 1,
+        "m": 1,
+        "start_P": 0,
+        "seasonal": True,
+        "d": 1,
+        "D": 1,
+        "trace": True,
+        "error_action": "ignore",
+        "suppress_warnings": True,
+        "stepwise": True,
+    }

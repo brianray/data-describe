@@ -29,6 +29,7 @@ dependencies:
   - modin>=0.8.0
   - pip>=20.0.0
   - tqdm>=4.49.0
+  - pmdarima>=1.7
   - pip:
       - google-cloud-storage>=1.18.0
       - presidio-analyzer==0.3.8917rc0
