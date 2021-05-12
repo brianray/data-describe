@@ -40,7 +40,7 @@ jobs:
       - run: |
           git fetch --prune --unshallow --tags
       - name: Cache conda
-        uses: actions/cache@v2
+        uses: actions/cache@v2.1.5
         env:
           # Increase this value to reset cache if etc/doc-environment.yml has not changed
           CACHE_NUMBER: 0

@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Cache conda
-        uses: actions/cache@v2
+        uses: actions/cache@v2.1.5
         env:
           # Increase this value to reset cache if etc/test-environment.yml has not changed
           CACHE_NUMBER: 0
@@ -42,7 +42,7 @@ jobs:
           path: ~/conda_pkgs_dir
           key: ${{ runner.os }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('etc/test-environment.yml') }}
       - name: Cache pip
-        uses: actions/cache@v2
+        uses: actions/cache@v2.1.5
         env:
           # Increase this value to reset cache if etc/test-environment.yml has not changed
           CACHE_NUMBER: 0
