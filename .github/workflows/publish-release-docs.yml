@@ -22,7 +22,7 @@ jobs:
           path: ~/conda_pkgs_dir
           key: ${{ runner.os }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('etc/doc-environment.yml') }}
       - name: Setup miniconda
-        uses: conda-incubator/setup-miniconda@v2.0.1
+        uses: conda-incubator/setup-miniconda@v2.1.1
         with:
           miniconda-version: latest
           activate-environment: doc-env

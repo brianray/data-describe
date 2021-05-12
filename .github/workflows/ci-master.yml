@@ -48,7 +48,7 @@ jobs:
           path: ~/.cache/pip
           key: ${{ runner.os }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('etc/test-environment.yml') }}
       - name: Setup miniconda
-        uses: conda-incubator/setup-miniconda@v2.0.1
+        uses: conda-incubator/setup-miniconda@v2.1.1
         with:
           miniconda-version: latest
           activate-environment: test-env
